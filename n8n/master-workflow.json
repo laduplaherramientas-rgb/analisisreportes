@@ -1,0 +1,138 @@
+{
+  "name": "Meta Ads Daily · Multi-cliente (Master)",
+  "nodes": [
+    {
+      "parameters": {
+        "rule": {
+          "interval": [
+            { "field": "cronExpression", "expression": "0 7 * * *" }
+          ]
+        }
+      },
+      "id": "trigger-cron",
+      "name": "Cron · Todos los días 7 AM",
+      "type": "n8n-nodes-base.scheduleTrigger",
+      "typeVersion": 1.1,
+      "position": [200, 300]
+    },
+    {
+      "parameters": {
+        "operation": "read",
+        "documentId": {
+          "__rl": true,
+          "value": "YOUR_MASTER_SHEET_ID",
+          "mode": "id"
+        },
+        "sheetName": {
+          "__rl": true,
+          "value": "Clientes",
+          "mode": "name"
+        },
+        "options": {}
+      },
+      "id": "read-clients",
+      "name": "Leer Master Sheet · Clientes",
+      "type": "n8n-nodes-base.googleSheets",
+      "typeVersion": 4.4,
+      "position": [420, 300]
+    },
+    {
+      "parameters": {
+        "jsCode": "// Calcula fecha de ayer, la agrega a cada cliente.\nconst d = new Date();\nd.setDate(d.getDate() - 1);\nconst yesterday = d.toISOString().split('T')[0];\n\nreturn $input.all().map(item => ({\n  json: {\n    ...item.json,\n    yesterday\n  }\n}));"
+      },
+      "id": "add-date",
+      "name": "Agregar fecha (ayer)",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [640, 300]
+    },
+    {
+      "parameters": {
+        "method": "GET",
+        "url": "=https://graph.facebook.com/v19.0/{{ $json.meta_ad_account_id }}/insights",
+        "sendQuery": true,
+        "queryParameters": {
+          "parameters": [
+            { "name": "access_token", "value": "={{ $json.meta_token }}" },
+            { "name": "level", "value": "ad" },
+            { "name": "time_range", "value": "={\"since\":\"{{ $json.yesterday }}\",\"until\":\"{{ $json.yesterday }}\"}" },
+            { "name": "time_increment", "value": "1" },
+            { "name": "fields", "value": "date_start,date_stop,campaign_id,campaign_name,adset_id,adset_name,ad_id,ad_name,spend,cpc,ctr,inline_link_click_ctr,frequency,actions,action_values,cost_per_action_type,purchase_roas" },
+            { "name": "action_attribution_windows", "value": "['7d_click','1d_view']" },
+            { "name": "limit", "value": "500" }
+          ]
+        },
+        "options": {
+          "response": { "response": { "responseFormat": "json" } }
+        }
+      },
+      "id": "meta-api",
+      "name": "Meta Insights API",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [860, 300]
+    },
+    {
+      "parameters": {
+        "jsCode": "// Aplana la respuesta de Meta manteniendo el sheet_id de cada cliente.\nconst pick = (arr, key) => {\n  if (!Array.isArray(arr)) return 0;\n  const found = arr.find(a => a.action_type === key);\n  return found ? parseFloat(found.value) : 0;\n};\nconst pickAny = (arr, keys) => {\n  for (const k of keys) {\n    const v = pick(arr, k);\n    if (v > 0) return v;\n  }\n  return 0;\n};\n\nconst rows = [];\n\nfor (const item of $input.all()) {\n  // sheet_id viene de la iteración del cliente (Master Sheet)\n  const sheetId = item.json.sheet_id || item.json['Sheet ID'];\n  const data = item.json.data || [];\n\n  for (const r of data) {\n    const spend = parseFloat(r.spend || 0);\n    const compras = pickAny(r.actions, ['omni_purchase', 'purchase', 'offsite_conversion.fb_pixel_purchase']);\n    const valorCompra = pickAny(r.action_values, ['omni_purchase', 'purchase', 'offsite_conversion.fb_pixel_purchase']);\n    const costoCompra = pickAny(r.cost_per_action_type, ['omni_purchase', 'purchase', 'offsite_conversion.fb_pixel_purchase']);\n    const atc = pickAny(r.actions, ['add_to_cart', 'offsite_conversion.fb_pixel_add_to_cart']);\n    const valorAtc = pickAny(r.action_values, ['add_to_cart', 'offsite_conversion.fb_pixel_add_to_cart']);\n    const costoAtc = pickAny(r.cost_per_action_type, ['add_to_cart', 'offsite_conversion.fb_pixel_add_to_cart']);\n    const ic = pickAny(r.actions, ['initiate_checkout', 'offsite_conversion.fb_pixel_initiate_checkout']);\n    const valorIc = pickAny(r.action_values, ['initiate_checkout', 'offsite_conversion.fb_pixel_initiate_checkout']);\n    const costoIc = pickAny(r.cost_per_action_type, ['initiate_checkout', 'offsite_conversion.fb_pixel_initiate_checkout']);\n    const lpv = pick(r.actions, 'landing_page_view');\n    const costoLpv = pick(r.cost_per_action_type, 'landing_page_view');\n\n    let roas = 0;\n    if (Array.isArray(r.purchase_roas) && r.purchase_roas.length) {\n      roas = parseFloat(r.purchase_roas[0].value);\n    } else if (spend > 0) {\n      roas = valorCompra / spend;\n    }\n\n    rows.push({\n      json: {\n        _sheet_id: sheetId,\n        unique_id: `${r.date_start}_${r.ad_id}`,\n        fecha: r.date_start,\n        campaign_id: r.campaign_id,\n        campaign_name: r.campaign_name,\n        adset_id: r.adset_id,\n        adset_name: r.adset_name,\n        ad_id: r.ad_id,\n        ad_name: r.ad_name,\n        gasto: spend,\n        cpc: parseFloat(r.cpc || 0),\n        ctr_general: parseFloat(r.ctr || 0),\n        ctr_enlace: parseFloat(r.inline_link_click_ctr || 0),\n        frecuencia: parseFloat(r.frequency || 0),\n        visitas_pagina: lpv,\n        costo_visita_pagina: costoLpv,\n        agregados_carrito: atc,\n        costo_agregado_carrito: costoAtc,\n        valor_agregado_carrito: valorAtc,\n        pagos_iniciados: ic,\n        costo_pago_iniciado: costoIc,\n        valor_pago_iniciado: valorIc,\n        compras: compras,\n        valor_compra: valorCompra,\n        costo_compra: costoCompra,\n        roas: roas\n      }\n    });\n  }\n}\n\nreturn rows;"
+      },
+      "id": "flatten",
+      "name": "Aplanar y mapear métricas",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [1080, 300]
+    },
+    {
+      "parameters": {
+        "operation": "appendOrUpdate",
+        "documentId": {
+          "__rl": true,
+          "value": "={{ $json._sheet_id }}",
+          "mode": "id"
+        },
+        "sheetName": {
+          "__rl": true,
+          "value": "Raw",
+          "mode": "name"
+        },
+        "columns": {
+          "mappingMode": "autoMapInputData",
+          "matchingColumns": ["unique_id"]
+        },
+        "options": {
+          "cellFormat": "USER_ENTERED"
+        }
+      },
+      "id": "sheets-upsert",
+      "name": "Upsert al Sheet del cliente",
+      "type": "n8n-nodes-base.googleSheets",
+      "typeVersion": 4.4,
+      "position": [1300, 300]
+    }
+  ],
+  "connections": {
+    "Cron · Todos los días 7 AM": {
+      "main": [[{ "node": "Leer Master Sheet · Clientes", "type": "main", "index": 0 }]]
+    },
+    "Leer Master Sheet · Clientes": {
+      "main": [[{ "node": "Agregar fecha (ayer)", "type": "main", "index": 0 }]]
+    },
+    "Agregar fecha (ayer)": {
+      "main": [[{ "node": "Meta Insights API", "type": "main", "index": 0 }]]
+    },
+    "Meta Insights API": {
+      "main": [[{ "node": "Aplanar y mapear métricas", "type": "main", "index": 0 }]]
+    },
+    "Aplanar y mapear métricas": {
+      "main": [[{ "node": "Upsert al Sheet del cliente", "type": "main", "index": 0 }]]
+    }
+  },
+  "settings": {
+    "executionOrder": "v1",
+    "timezone": "America/Argentina/Buenos_Aires"
+  },
+  "meta": {
+    "instanceId": "meta-ads-master-multicliente-v1"
+  },
+  "pinData": {}
+}

@@ -1,0 +1,14 @@
+import { NextResponse } from "next/server";
+import { auth } from "@/lib/auth";
+import { getClients } from "@/lib/clients";
+
+export const dynamic = "force-dynamic";
+export const revalidate = 60;
+
+export async function GET() {
+  const session = await auth();
+  if (!session?.user) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+
+  const clients = await getClients();
+  return NextResponse.json({ clients });
+}
