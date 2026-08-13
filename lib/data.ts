@@ -14,12 +14,53 @@ export function num(v: unknown): number {
 }
 
 // ============================================================
+// Convierte cualquier formato de fecha del Sheet al ISO YYYY-MM-DD.
+// Maneja: serial numérico (46245), ISO ya-en-formato ("2026-08-11"),
+// y formatos localizados ("8/11/2026", "11/8/2026", "11-8-2026").
+// ============================================================
+export function normalizeFecha(v: unknown): string {
+  // Serial numérico de Google Sheets (epoch: 1899-12-30)
+  if (typeof v === "number" && v > 40000 && v < 60000) {
+    const ms = Date.UTC(1899, 11, 30) + v * 86400 * 1000;
+    const d = new Date(ms);
+    const y = d.getUTCFullYear();
+    const m = String(d.getUTCMonth() + 1).padStart(2, "0");
+    const day = String(d.getUTCDate()).padStart(2, "0");
+    return `${y}-${m}-${day}`;
+  }
+  const s = String(v ?? "").trim();
+  if (!s) return "";
+  // Ya en formato ISO
+  if (/^\d{4}-\d{2}-\d{2}$/.test(s)) return s;
+  // Formato dd/mm/yyyy o mm/dd/yyyy o dd-mm-yyyy — intentamos parsear
+  const m = s.match(/^(\d{1,2})[\/\-](\d{1,2})[\/\-](\d{2,4})$/);
+  if (m) {
+    let [, a, b, y] = m;
+    const yr = y.length === 2 ? "20" + y : y;
+    // Si el primer valor > 12, seguro es día. Si el segundo > 12, seguro es mes.
+    // Por defecto asumimos dd/mm (formato AR).
+    const day = parseInt(a, 10);
+    const month = parseInt(b, 10);
+    if (day > 12) {
+      return `${yr}-${String(month).padStart(2, "0")}-${String(day).padStart(2, "0")}`;
+    }
+    if (month > 12) {
+      // formato es mm/dd
+      return `${yr}-${String(day).padStart(2, "0")}-${String(month).padStart(2, "0")}`;
+    }
+    // Ambiguo — asumimos dd/mm
+    return `${yr}-${String(month).padStart(2, "0")}-${String(day).padStart(2, "0")}`;
+  }
+  return s;
+}
+
+// ============================================================
 // Normaliza una fila cruda del Sheet a RawRow (con tipos correctos).
 // ============================================================
 export function normalizeRow(r: Record<string, unknown>): RawRow {
   return {
     unique_id: String(r.unique_id ?? ""),
-    fecha: String(r.fecha ?? ""),
+    fecha: normalizeFecha(r.fecha),
     campaign_id: String(r.campaign_id ?? ""),
     campaign_name: String(r.campaign_name ?? ""),
     adset_id: String(r.adset_id ?? ""),
