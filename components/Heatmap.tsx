@@ -21,6 +21,7 @@ type Props = {
   currency?: string;
   target?: number; // valor de objetivo · usado para colorear
   metricLabel: string;
+  highlightDate?: string; // resaltar esta fecha (típicamente hoy)
 };
 
 function colorForRoas(v: number, target: number): string {
@@ -68,6 +69,7 @@ export default function Heatmap({
   currency,
   target = 5,
   metricLabel,
+  highlightDate,
 }: Props) {
   const allValues = rows.flatMap((r) => r.cells.map((c) => c.value));
   const max = Math.max(...allValues, 1);
@@ -97,12 +99,20 @@ export default function Heatmap({
               <th className="rowname" style={{ textAlign: "left", paddingLeft: 16 }}>
                 {metric === "roas" ? "Entidad · ROAS" : `Entidad · ${metricLabel}`}
               </th>
-              {dates.map((d) => (
-                <th key={d} className="day">
-                  {dayNumber(d)}
-                  <span className="weekday">{weekday(d)}</span>
-                </th>
-              ))}
+              {dates.map((d) => {
+                const isToday = d === highlightDate;
+                return (
+                  <th
+                    key={d}
+                    className="day"
+                    style={isToday ? { color: "var(--accent)", fontWeight: 700 } : undefined}
+                  >
+                    {dayNumber(d)}
+                    <span className="weekday">{weekday(d)}</span>
+                    {isToday && <span style={{ display: "block", fontSize: 9, color: "var(--accent)", fontWeight: 700 }}>HOY</span>}
+                  </th>
+                );
+              })}
               <th className="trend-cell" style={{ textAlign: "center" }}>Tend.</th>
             </tr>
           </thead>
@@ -113,11 +123,19 @@ export default function Heatmap({
                 {dates.map((d) => {
                   const c = r.cells.find((c) => c.date === d);
                   const v = c?.value ?? 0;
+                  const isToday = d === highlightDate;
+                  const cellStyle: React.CSSProperties = {
+                    background: v > 0 ? bgFor(v) : undefined,
+                  };
+                  if (isToday) {
+                    cellStyle.outline = "2px solid var(--accent)";
+                    cellStyle.outlineOffset = "-2px";
+                  }
                   return (
                     <td
                       key={d}
                       className={v === 0 ? "cell empty" : "cell"}
-                      style={{ background: v > 0 ? bgFor(v) : undefined }}
+                      style={cellStyle}
                     >
                       {fmt(v, metric, currency)}
                     </td>

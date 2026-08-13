@@ -127,11 +127,23 @@ export default async function SeasonalityPage({
             </thead>
             <tbody>
               {weekdayStats.map((w) => {
-                const pctSpend = allRows.reduce((s, r) => s + r.gasto, 0) > 0
-                  ? (w.agg.gasto / allRows.reduce((s, r) => s + r.gasto, 0)) * 100
-                  : 0;
-                const isBest = w.label === mejorDia?.label;
-                const isWorst = w.label === peorDia?.label;
+                const totalGasto = allRows.reduce((s, r) => s + r.gasto, 0);
+                const pctSpend = totalGasto > 0 ? (w.agg.gasto / totalGasto) * 100 : 0;
+                const hasData = w.count > 0;
+                const isBest = hasData && w.label === mejorDia?.label && (mejorDia?.count ?? 0) > 0;
+                const isWorst = hasData && w.label === peorDia?.label && w !== mejorDia;
+
+                if (!hasData) {
+                  return (
+                    <tr key={w.label} className="future">
+                      <td><b style={{ color: "var(--muted)" }}>{w.label}</b></td>
+                      <td colSpan={6} style={{ textAlign: "left", color: "var(--muted)", fontStyle: "italic" }}>
+                        sin datos aún · aparece cuando n8n capture algún {w.label.toLowerCase()}
+                      </td>
+                    </tr>
+                  );
+                }
+
                 return (
                   <tr key={w.label}>
                     <td>

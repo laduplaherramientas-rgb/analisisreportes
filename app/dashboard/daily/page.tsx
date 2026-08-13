@@ -10,6 +10,30 @@ function uniqueSortedDates(rows: RawRow[]): string[] {
   return Array.from(new Set(rows.map((r) => r.fecha))).sort();
 }
 
+// Genera todas las fechas ISO entre since y until (inclusive)
+function datesInRange(since: string, until: string): string[] {
+  const out: string[] = [];
+  const start = new Date(since + "T00:00:00");
+  const end = new Date(until + "T00:00:00");
+  const cursor = new Date(start);
+  while (cursor <= end) {
+    const y = cursor.getFullYear();
+    const m = String(cursor.getMonth() + 1).padStart(2, "0");
+    const d = String(cursor.getDate()).padStart(2, "0");
+    out.push(`${y}-${m}-${d}`);
+    cursor.setDate(cursor.getDate() + 1);
+  }
+  return out;
+}
+
+function todayISO(): string {
+  const d = new Date();
+  const y = d.getFullYear();
+  const m = String(d.getMonth() + 1).padStart(2, "0");
+  const day = String(d.getDate()).padStart(2, "0");
+  return `${y}-${m}-${day}`;
+}
+
 function trend(cells: { date: string; value: number }[]): number {
   // Compara promedio últimos 3 días vs 3 previos
   const sorted = [...cells].sort((a, b) => a.date.localeCompare(b.date));
@@ -77,8 +101,10 @@ export default async function DailyPage({
   if (!ctx.client) return <EmptyState title="No hay clientes configurados" />;
   const { client, period, rows } = ctx;
   const currency = client.moneda;
-  const dates = uniqueSortedDates(rows);
+  // Todas las fechas del período (para mostrar días sin datos con patrón rayado)
+  const dates = datesInRange(period.since, period.until);
   const target = client.roas_objetivo;
+  const today = todayISO();
 
   if (rows.length === 0) {
     return (
@@ -106,6 +132,7 @@ export default async function DailyPage({
         currency={currency}
         target={target}
         metricLabel="ROAS"
+        highlightDate={today}
       />
 
       <div className="section-label">Nivel 2 · Por Conjunto</div>
@@ -117,6 +144,7 @@ export default async function DailyPage({
         currency={currency}
         target={target}
         metricLabel="ROAS"
+        highlightDate={today}
       />
 
       <div className="section-label">Nivel 3 · Por Anuncio</div>
@@ -128,6 +156,7 @@ export default async function DailyPage({
         currency={currency}
         target={target}
         metricLabel="ROAS"
+        highlightDate={today}
       />
 
       <div className="footstrip">

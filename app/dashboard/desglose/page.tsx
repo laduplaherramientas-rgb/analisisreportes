@@ -220,6 +220,25 @@ function RowCampaign({
   const badge = camp.objetivo === "presentacion" ? "pre" : camp.objetivo === "evaluacion" ? "eval" : "conv";
   const badgeLabel = badge.toUpperCase();
 
+  // Para Presentación las columnas ROAS/CPA/Compras se reemplazan por
+  // Visitas/CPV/CTR (métricas propias del objetivo de tráfico).
+  const cellRoas = (agg: ReturnType<typeof aggregate>) =>
+    isConv ? fmtRoas(agg.roas) : (
+      <span title="Visitas a la página (LPV)">{fmtNum(agg.visitas_pagina)} <small style={{ color: "var(--muted)" }}>vis.</small></span>
+    );
+  const cellCpa = (agg: ReturnType<typeof aggregate>) => {
+    if (isConv) return agg.compras > 0 ? fmtMoney(agg.cpa, currency) : "—";
+    // CPV = gasto / visitas
+    if (agg.visitas_pagina > 0) {
+      return <span title="Costo por visita (CPV)">{fmtMoney(agg.gasto / agg.visitas_pagina, currency)} <small style={{ color: "var(--muted)" }}>CPV</small></span>;
+    }
+    return "—";
+  };
+  const cellCompras = (agg: ReturnType<typeof aggregate>) =>
+    isConv ? fmtNum(agg.compras) : (
+      <span title="Add to cart">{fmtNum(agg.agregados_carrito)} <small style={{ color: "var(--muted)" }}>ATC</small></span>
+    );
+
   const trs: React.ReactElement[] = [
     <tr className="row-campaign" key={`c-${camp.id}`}>
       <td className="name">
@@ -228,9 +247,9 @@ function RowCampaign({
       </td>
       <td>{fmtMoney(camp.agg.gasto, currency)}</td>
       <td>{fmtMoney(camp.agg.ventas, currency)}</td>
-      <td>{isConv ? fmtRoas(camp.agg.roas) : "—"}</td>
-      <td>{camp.agg.compras > 0 ? fmtMoney(camp.agg.cpa, currency) : "—"}</td>
-      <td>{fmtNum(camp.agg.compras)}</td>
+      <td>{cellRoas(camp.agg)}</td>
+      <td>{cellCpa(camp.agg)}</td>
+      <td>{cellCompras(camp.agg)}</td>
       <td>—</td>
       <td>{camp.agg.frecuencia.toFixed(2)}</td>
     </tr>,
@@ -242,9 +261,9 @@ function RowCampaign({
         <td className="name">📦 {a.name}</td>
         <td>{fmtMoney(a.agg.gasto, currency)}</td>
         <td>{fmtMoney(a.agg.ventas, currency)}</td>
-        <td>{isConv ? fmtRoas(a.agg.roas) : "—"}</td>
-        <td>{a.agg.compras > 0 ? fmtMoney(a.agg.cpa, currency) : "—"}</td>
-        <td>{fmtNum(a.agg.compras)}</td>
+        <td>{cellRoas(a.agg)}</td>
+        <td>{cellCpa(a.agg)}</td>
+        <td>{cellCompras(a.agg)}</td>
         <td>—</td>
         <td>{a.agg.frecuencia.toFixed(2)}</td>
       </tr>
@@ -255,9 +274,9 @@ function RowCampaign({
           <td className="name">🎬 {ad.name}</td>
           <td>{fmtMoney(ad.agg.gasto, currency)}</td>
           <td>{fmtMoney(ad.agg.ventas, currency)}</td>
-          <td>{isConv ? fmtRoas(ad.agg.roas) : "—"}</td>
-          <td>{ad.agg.compras > 0 ? fmtMoney(ad.agg.cpa, currency) : "—"}</td>
-          <td>{fmtNum(ad.agg.compras)}</td>
+          <td>{cellRoas(ad.agg)}</td>
+          <td>{cellCpa(ad.agg)}</td>
+          <td>{cellCompras(ad.agg)}</td>
           <td>—</td>
           <td>{ad.agg.frecuencia.toFixed(2)}</td>
         </tr>
