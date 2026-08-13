@@ -1,8 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { verifyCredentials, makeSessionToken, setSessionCookie } from "@/lib/auth";
 
-// Simple rate-limit en memoria (Vercel es serverless — se resetea entre invocaciones,
-// pero al menos frena ráfagas del mismo IP en la misma warm instance).
 const attempts = new Map<string, { count: number; until: number }>();
 
 export async function POST(req: NextRequest) {
@@ -35,7 +33,7 @@ export async function POST(req: NextRequest) {
   }
 
   attempts.delete(ip);
-  const token = makeSessionToken(user);
+  const token = await makeSessionToken(user);
   await setSessionCookie(token);
   return NextResponse.json({ ok: true });
 }

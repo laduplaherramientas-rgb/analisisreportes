@@ -1,50 +1,91 @@
 import { cookies } from "next/headers";
-import { createHmac, timingSafeEqual } from "crypto";
 
 const COOKIE_NAME = "ld_session";
 const MAX_AGE = 60 * 60 * 24 * 30; // 30 días
 
-function secret() {
+function secret(): string {
   const s = process.env.AUTH_SECRET;
   if (!s) throw new Error("AUTH_SECRET not set");
   return s;
 }
 
-function sign(payload: string): string {
-  return createHmac("sha256", secret()).update(payload).digest("hex");
+// --- Web Crypto: funciona en Node 20+ y Edge Runtime ---
+async function importKey(secretStr: string): Promise<CryptoKey> {
+  const enc = new TextEncoder();
+  return crypto.subtle.importKey(
+    "raw",
+    enc.encode(secretStr),
+    { name: "HMAC", hash: "SHA-256" },
+    false,
+    ["sign", "verify"]
+  );
 }
 
-function safeEqual(a: string, b: string): boolean {
-  const ba = Buffer.from(a);
-  const bb = Buffer.from(b);
-  if (ba.length !== bb.length) return false;
-  return timingSafeEqual(ba, bb);
+function toHex(buf: ArrayBuffer): string {
+  return Array.from(new Uint8Array(buf))
+    .map((b) => b.toString(16).padStart(2, "0"))
+    .join("");
+}
+
+function fromHex(hex: string): Uint8Array {
+  const out = new Uint8Array(hex.length / 2);
+  for (let i = 0; i < out.length; i++) out[i] = parseInt(hex.substr(i * 2, 2), 16);
+  return out;
+}
+
+async function sign(payload: string): Promise<string> {
+  const key = await importKey(secret());
+  const sig = await crypto.subtle.sign("HMAC", key, new TextEncoder().encode(payload));
+  return toHex(sig);
+}
+
+async function verifyHmac(payload: string, sig: string): Promise<boolean> {
+  try {
+    const key = await importKey(secret());
+    return crypto.subtle.verify(
+      "HMAC",
+      key,
+      fromHex(sig),
+      new TextEncoder().encode(payload)
+    );
+  } catch {
+    return false;
+  }
+}
+
+function safeStrEqual(a: string, b: string): boolean {
+  if (a.length !== b.length) return false;
+  let diff = 0;
+  for (let i = 0; i < a.length; i++) diff |= a.charCodeAt(i) ^ b.charCodeAt(i);
+  return diff === 0;
 }
 
 export function verifyCredentials(user: string, password: string): boolean {
   const expectedUser = process.env.AUTH_USER || "";
   const expectedPass = process.env.AUTH_PASSWORD || "";
   if (!expectedUser || !expectedPass) return false;
-  return safeEqual(user, expectedUser) && safeEqual(password, expectedPass);
+  return safeStrEqual(user, expectedUser) && safeStrEqual(password, expectedPass);
 }
 
-export function makeSessionToken(user: string): string {
+export async function makeSessionToken(user: string): Promise<string> {
   const issuedAt = Math.floor(Date.now() / 1000);
   const payload = `${user}.${issuedAt}`;
-  const sig = sign(payload);
+  const sig = await sign(payload);
   return `${payload}.${sig}`;
 }
 
-export function verifySessionToken(token: string | undefined): { user: string } | null {
+export async function verifySessionToken(
+  token: string | undefined
+): Promise<{ user: string } | null> {
   if (!token) return null;
   const parts = token.split(".");
   if (parts.length !== 3) return null;
   const [user, issuedAt, sig] = parts;
   const payload = `${user}.${issuedAt}`;
-  const expected = sign(payload);
-  if (!safeEqual(sig, expected)) return null;
+  const ok = await verifyHmac(payload, sig);
+  if (!ok) return null;
   const age = Math.floor(Date.now() / 1000) - parseInt(issuedAt, 10);
-  if (age < 0 || age > MAX_AGE) return null;
+  if (Number.isNaN(age) || age < 0 || age > MAX_AGE) return null;
   return { user };
 }
 

@@ -1,12 +1,13 @@
-import { auth, signOut } from "@/lib/auth";
+import { getSession } from "@/lib/auth";
 import { getClients } from "@/lib/clients";
 import EmptyState from "@/components/EmptyState";
 import { fmtMoney, fmtRoas } from "@/lib/data";
+import LogoutButton from "@/components/LogoutButton";
 
 export const dynamic = "force-dynamic";
 
 export default async function SettingsPage() {
-  const session = await auth();
+  const session = await getSession();
   const clients = await getClients();
 
   return (
@@ -17,7 +18,7 @@ export default async function SettingsPage() {
           <h1>Ajustes</h1>
         </div>
         <div className="view-right">
-          <div className="caption">Logueado como <b>{session?.user?.email}</b></div>
+          <div className="caption">Logueado como <b>{session?.user}</b></div>
         </div>
       </header>
 
@@ -75,7 +76,7 @@ export default async function SettingsPage() {
         <span className="icon">i</span>
         <span>
           <b>1.</b> Abrí la Master Sheet y agregá una fila en la pestaña <b>Clientes</b>: id, nombre, sheet_id, presupuesto, meta_ventas, moneda, roas_objetivo.<br />
-          <b>2.</b> Compartí el nuevo Sheet del cliente con el email del service account (rol Viewer + Editor si querés que escriba Bitácora).<br />
+          <b>2.</b> Compartí el nuevo Sheet del cliente con el email del service account (rol Editor).<br />
           <b>3.</b> Creá pestañas <b>Raw</b> (25 columnas) y <b>Bitacora</b> (6 columnas) en el Sheet del cliente.<br />
           <b>4.</b> Agregá el cliente en la Master Sheet del workflow n8n para que el cron diario lo pulle automáticamente.
         </span>
@@ -84,16 +85,9 @@ export default async function SettingsPage() {
       <div className="section-label">Sesión</div>
       <div className="panel" style={{ padding: 20 }}>
         <p style={{ marginTop: 0, color: "var(--muted)" }}>
-          Estás logueado como <b style={{ color: "var(--ink)" }}>{session?.user?.email}</b>.
+          Estás logueado como <b style={{ color: "var(--ink)" }}>{session?.user}</b>.
         </p>
-        <form
-          action={async () => {
-            "use server";
-            await signOut({ redirectTo: "/login" });
-          }}
-        >
-          <button className="btn secondary" type="submit">Cerrar sesión</button>
-        </form>
+        <LogoutButton />
       </div>
     </>
   );

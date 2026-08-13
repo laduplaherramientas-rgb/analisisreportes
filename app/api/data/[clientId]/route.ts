@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
-import { auth } from "@/lib/auth";
+import { getSession } from "@/lib/auth";
 import { getClientById } from "@/lib/clients";
 import { safeReadObjects } from "@/lib/sheets";
 import { normalizeRow } from "@/lib/data";
@@ -11,14 +11,13 @@ export async function GET(
   _req: NextRequest,
   { params }: { params: Promise<{ clientId: string }> }
 ) {
-  const session = await auth();
-  if (!session?.user) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+  const session = await getSession();
+  if (!session) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
 
   const { clientId } = await params;
   const client = await getClientById(clientId);
   if (!client) return NextResponse.json({ error: "Client not found" }, { status: 404 });
 
-  // Lee toda la pestaña Raw. Con 20 ads/día × 365 días = 7300 filas — soportable en un fetch.
   const raw = await safeReadObjects<Record<string, unknown>>(
     client.sheet_id,
     "Raw!A1:Y"
