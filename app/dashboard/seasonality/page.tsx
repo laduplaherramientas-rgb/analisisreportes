@@ -94,11 +94,11 @@ export default async function SeasonalityPage({
     <>
       <Header client={client.nombre} />
 
-      {allRows.length < 100 && (
+      {monthStats.length < 2 && (
         <div className="callout warn" style={{ marginBottom: 24 }}>
           <span className="icon">i</span>
           <span>
-            Tenés <b>{allRows.length} filas</b> · las lecturas de estacionalidad se vuelven confiables con 4+ semanas y 500+ filas. Por ahora los patrones son directivos, no concluyentes.
+            Tenés data de <b>{monthStats.length} {monthStats.length === 1 ? "mes" : "meses"}</b> · las comparativas mes-a-mes aparecen cuando cierres el 2° mes. Los patrones por día de la semana ya son indicativos.
           </span>
         </div>
       )}

@@ -95,16 +95,18 @@ export default async function DailyPage({
   const sp = await searchParams;
   const ctx = await loadDashboard(
     sp.client ?? null,
-    (sp.period as PeriodKey) ?? "last30"
+    (sp.period as PeriodKey) ?? "thisMonth"
   );
 
   if (!ctx.client) return <EmptyState title="No hay clientes configurados" />;
   const { client, period, rows } = ctx;
   const currency = client.moneda;
-  // Todas las fechas del período (para mostrar días sin datos con patrón rayado)
-  const dates = datesInRange(period.since, period.until);
-  const target = client.roas_objetivo;
   const today = todayISO();
+  // Todas las fechas del período (para mostrar días sin datos con patrón rayado).
+  // Aseguramos que hoy esté incluido para que el highlight se vea.
+  const until = period.until >= today ? period.until : today;
+  const dates = datesInRange(period.since, until);
+  const target = client.roas_objetivo;
 
   if (rows.length === 0) {
     return (
