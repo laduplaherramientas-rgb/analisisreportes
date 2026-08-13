@@ -37,6 +37,8 @@ export async function readRange(
     spreadsheetId,
     range,
     valueRenderOption: "UNFORMATTED_VALUE",
+    // Devuelve fechas como string legible (2026-08-11) en vez de serial number (46245)
+    dateTimeRenderOption: "FORMATTED_STRING",
   });
   return (res.data.values as string[][]) ?? [];
 }
