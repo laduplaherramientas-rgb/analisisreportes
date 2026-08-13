@@ -1,4 +1,5 @@
 import { google, sheets_v4 } from "googleapis";
+import { unstable_cache } from "next/cache";
 
 // ============================================================
 // Service Account auth · lee todos los sheets con permiso de Viewer.
@@ -29,7 +30,7 @@ export function sheetsClient() {
 // ============================================================
 // Lee un rango de un sheet como matriz de strings.
 // ============================================================
-export async function readRange(
+async function readRangeUncached(
   spreadsheetId: string,
   range: string
 ): Promise<string[][]> {
@@ -42,6 +43,13 @@ export async function readRange(
   });
   return (res.data.values as string[][]) ?? [];
 }
+
+// Cache de 60 segundos por (sheetId, range) — evita golpear la API en cada nav
+export const readRange = unstable_cache(
+  async (spreadsheetId: string, range: string) => readRangeUncached(spreadsheetId, range),
+  ["sheets-readRange"],
+  { revalidate: 60, tags: ["sheets"] }
+);
 
 // ============================================================
 // Convierte una matriz [header, ...rows] a array de objetos.

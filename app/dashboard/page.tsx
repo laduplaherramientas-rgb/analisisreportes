@@ -43,6 +43,36 @@ export default async function DashboardPage({
       ? "warn"
       : "bad";
 
+  // ============ Cálculo de plan-a-hoy y proyección ============
+  const totalDaysInPeriod = Math.max(
+    1,
+    Math.round(
+      (new Date(period.until + "T00:00:00").getTime() -
+        new Date(period.since + "T00:00:00").getTime()) /
+        86400000
+    ) + 1
+  );
+  const daysElapsed = Math.max(1, kpi.dias_con_datos);
+  const planFraction = daysElapsed / totalDaysInPeriod;
+
+  const planGasto = client.presupuesto * planFraction;
+  const planVentas = client.meta_ventas * planFraction;
+
+  // Proyección de cierre (extrapolando el ritmo diario actual)
+  const dailyGasto = kpi.gasto / daysElapsed;
+  const dailyVentas = kpi.ventas / daysElapsed;
+  const dailyCompras = kpi.compras / daysElapsed;
+
+  const daysInMonth = totalDaysInPeriod;
+  const proyGasto = dailyGasto * daysInMonth;
+  const proyVentas = dailyVentas * daysInMonth;
+  const proyCompras = Math.round(dailyCompras * daysInMonth);
+  const proyRoas = proyGasto > 0 ? proyVentas / proyGasto : 0;
+
+  const cumpleMetaGasto = proyGasto <= client.presupuesto * 1.05;
+  const cumpleMetaVentas = proyVentas >= client.meta_ventas * 0.95;
+  const cumpleMetaRoas = proyRoas >= client.roas_objetivo;
+
   // Ventas por día (para tabla de "por día")
   const daysMap = groupBy(rows, "fecha");
   const daysSorted = Array.from(daysMap.keys()).sort();
@@ -90,22 +120,22 @@ export default async function DashboardPage({
         <KpiCard
           title="Inversión"
           value={kpi.gasto}
-          previous={kpiPrev.gasto}
           format="money"
           currency={currency}
           goal={client.presupuesto}
+          goalPace={planGasto}
           progressColor="var(--accent)"
-          subLeft={{ label: "Ritmo diario", value: fmtMoney(kpi.gasto / Math.max(1, kpi.dias_con_datos), currency) }}
-          subRight={{ label: "Frecuencia", value: kpi.frecuencia.toFixed(2) }}
+          subLeft={{ label: "Restante", value: fmtMoney(Math.max(0, client.presupuesto - kpi.gasto), currency) }}
+          subRight={{ label: "Ritmo/día", value: fmtMoney(dailyGasto, currency) }}
         />
 
         <KpiCard
           title="Ventas"
           value={kpi.ventas}
-          previous={kpiPrev.ventas}
           format="money"
           currency={currency}
           goal={client.meta_ventas}
+          goalPace={planVentas}
           progressColor="var(--good)"
           subLeft={{ label: "Compras", value: fmtNum(kpi.compras) }}
           subRight={{ label: "Ticket", value: fmtMoney(kpi.ticket, currency) }}
@@ -121,6 +151,89 @@ export default async function DashboardPage({
           subLeft={{ label: "CPA", value: fmtMoney(kpi.cpa, currency) }}
           subRight={{ label: "Objetivo", value: fmtRoas(client.roas_objetivo) }}
         />
+      </div>
+
+      {/* ═════ TENDENCIA · PROYECCIÓN DE CIERRE ═════ */}
+      <div className="section-label">Tendencia · Proyección de cierre</div>
+      <div className="panel" style={{ padding: 24 }}>
+        <div style={{ display: "grid", gridTemplateColumns: "repeat(4, 1fr)", gap: 24 }}>
+          <div>
+            <div style={{ fontSize: 11, letterSpacing: "0.14em", textTransform: "uppercase", color: "var(--muted)", fontWeight: 600, marginBottom: 6 }}>
+              Cierre proyectado · Gasto
+            </div>
+            <div style={{ fontFamily: "'Iowan Old Style', Georgia, serif", fontSize: 28, fontVariantNumeric: "tabular-nums", color: cumpleMetaGasto ? "var(--good)" : "var(--warn)" }}>
+              {fmtMoney(proyGasto, currency)}
+            </div>
+            <div style={{ fontSize: 12, color: "var(--muted)", marginTop: 4 }}>
+              de meta {fmtMoney(client.presupuesto, currency)}
+              {" · "}
+              {cumpleMetaGasto ? (
+                <span style={{ color: "var(--good)" }}>en el rango</span>
+              ) : proyGasto > client.presupuesto ? (
+                <span style={{ color: "var(--warn)" }}>+{fmtMoney(proyGasto - client.presupuesto, currency)} sobregasto</span>
+              ) : (
+                <span style={{ color: "var(--muted)" }}>{fmtMoney(client.presupuesto - proyGasto, currency)} sin gastar</span>
+              )}
+            </div>
+          </div>
+
+          <div>
+            <div style={{ fontSize: 11, letterSpacing: "0.14em", textTransform: "uppercase", color: "var(--muted)", fontWeight: 600, marginBottom: 6 }}>
+              Cierre proyectado · Ventas
+            </div>
+            <div style={{ fontFamily: "'Iowan Old Style', Georgia, serif", fontSize: 28, fontVariantNumeric: "tabular-nums", color: cumpleMetaVentas ? "var(--good)" : "var(--bad)" }}>
+              {fmtMoney(proyVentas, currency)}
+            </div>
+            <div style={{ fontSize: 12, color: "var(--muted)", marginTop: 4 }}>
+              de meta {fmtMoney(client.meta_ventas, currency)}
+              {" · "}
+              {cumpleMetaVentas ? (
+                <span style={{ color: "var(--good)" }}>
+                  {proyVentas > client.meta_ventas ? "+" : ""}
+                  {(((proyVentas - client.meta_ventas) / client.meta_ventas) * 100).toFixed(0)}%
+                </span>
+              ) : (
+                <span style={{ color: "var(--bad)" }}>
+                  {(((proyVentas - client.meta_ventas) / client.meta_ventas) * 100).toFixed(0)}%
+                </span>
+              )}
+            </div>
+          </div>
+
+          <div>
+            <div style={{ fontSize: 11, letterSpacing: "0.14em", textTransform: "uppercase", color: "var(--muted)", fontWeight: 600, marginBottom: 6 }}>
+              Cierre proyectado · ROAS
+            </div>
+            <div style={{ fontFamily: "'Iowan Old Style', Georgia, serif", fontSize: 28, fontVariantNumeric: "tabular-nums", color: cumpleMetaRoas ? "var(--good)" : "var(--bad)" }}>
+              {fmtRoas(proyRoas)}
+            </div>
+            <div style={{ fontSize: 12, color: "var(--muted)", marginTop: 4 }}>
+              objetivo {fmtRoas(client.roas_objetivo)}
+              {" · "}
+              {cumpleMetaRoas ? (
+                <span style={{ color: "var(--good)" }}>+{(proyRoas - client.roas_objetivo).toFixed(2)}x sobre</span>
+              ) : (
+                <span style={{ color: "var(--bad)" }}>{(proyRoas - client.roas_objetivo).toFixed(2)}x bajo</span>
+              )}
+            </div>
+          </div>
+
+          <div>
+            <div style={{ fontSize: 11, letterSpacing: "0.14em", textTransform: "uppercase", color: "var(--muted)", fontWeight: 600, marginBottom: 6 }}>
+              Cierre proyectado · Compras
+            </div>
+            <div style={{ fontFamily: "'Iowan Old Style', Georgia, serif", fontSize: 28, fontVariantNumeric: "tabular-nums", color: "var(--ink)" }}>
+              {fmtNum(proyCompras)}
+            </div>
+            <div style={{ fontSize: 12, color: "var(--muted)", marginTop: 4 }}>
+              ritmo {dailyCompras.toFixed(1)}/día · {daysElapsed} de {totalDaysInPeriod} días
+            </div>
+          </div>
+        </div>
+
+        <div style={{ marginTop: 20, paddingTop: 16, borderTop: "1px dashed var(--rule)", fontSize: 12, color: "var(--muted)", fontStyle: "italic" }}>
+          Proyección lineal · asume que el ritmo diario actual se sostiene hasta el cierre del período. Recalibrar con cada pull de n8n.
+        </div>
       </div>
 
       {/* Detalle diario + Campañas */}

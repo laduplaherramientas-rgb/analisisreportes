@@ -11,6 +11,7 @@ type Props = {
   subLeft?: { label: string; value: string | number };
   subRight?: { label: string; value: string | number };
   goal?: number;
+  goalPace?: number; // valor "plan a hoy" (proporcional al calendario)
   progressColor?: string;
 };
 
@@ -34,10 +35,15 @@ export default function KpiCard({
   subLeft,
   subRight,
   goal,
+  goalPace,
   progressColor = "var(--accent)",
 }: Props) {
   const d = previous !== undefined ? delta(value, previous) : undefined;
   const pctOfGoal = goal && goal > 0 ? Math.min(100, (value / goal) * 100) : null;
+  const pctOfPace = goal && goalPace && goalPace > 0 ? Math.min(100, (goalPace / goal) * 100) : null;
+
+  // vs plan a hoy (positivo = arriba del plan)
+  const planDelta = goalPace && goalPace > 0 ? ((value - goalPace) / goalPace) * 100 : null;
 
   return (
     <div className="kpi">
@@ -50,7 +56,18 @@ export default function KpiCard({
 
       <div>
         <div className="kpi-big">{fmt(value, format, currency)}</div>
-        {d && (
+        {goalPace !== undefined && goalPace > 0 && (
+          <div style={{ fontSize: 12, color: "var(--muted)", marginTop: 4 }}>
+            plan a hoy <b style={{ color: "var(--ink-2)" }}>{fmt(goalPace, format, currency)}</b>
+            {planDelta !== null && (
+              <> · <span className={`delta ${planDelta > 0 ? "up" : planDelta < 0 ? "down" : "flat"}`}>
+                {planDelta > 0 ? "↑ +" : planDelta < 0 ? "↓ " : "→ "}
+                {planDelta.toFixed(1)}%
+              </span></>
+            )}
+          </div>
+        )}
+        {d && !goalPace && (
           <div style={{ fontSize: 12, color: "var(--muted)", marginTop: 4 }}>
             {previous !== undefined && `vs ${fmt(previous, format, currency)} anterior · `}
             <span className={`delta ${d.direction}`}>
@@ -63,14 +80,27 @@ export default function KpiCard({
 
       {goal !== undefined && pctOfGoal !== null && (
         <>
-          <div className="progress">
+          <div className="progress" style={{ position: "relative" }}>
             <span
               className="real"
               style={{ width: `${pctOfGoal}%`, background: progressColor, display: "block", height: "100%", borderRadius: 3 }}
             />
+            {pctOfPace !== null && (
+              <span
+                className="plan-tick"
+                style={{
+                  position: "absolute",
+                  top: -4, bottom: -4,
+                  left: `${pctOfPace}%`,
+                  width: 2,
+                  background: "var(--ink)",
+                }}
+              />
+            )}
           </div>
           <div className="progress-legend">
             <span>0</span>
+            {goalPace ? <span>Plan {fmt(goalPace, format, currency)}</span> : null}
             <span>Meta {fmt(goal, format, currency)}</span>
           </div>
         </>
