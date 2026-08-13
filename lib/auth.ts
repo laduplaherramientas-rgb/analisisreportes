@@ -27,10 +27,11 @@ function toHex(buf: ArrayBuffer): string {
     .join("");
 }
 
-function fromHex(hex: string): Uint8Array {
+function fromHex(hex: string): ArrayBuffer {
   const out = new Uint8Array(hex.length / 2);
   for (let i = 0; i < out.length; i++) out[i] = parseInt(hex.substr(i * 2, 2), 16);
-  return out;
+  // Devolvemos un ArrayBuffer nuevo garantizado (no SharedArrayBuffer)
+  return out.buffer.slice(0) as ArrayBuffer;
 }
 
 async function sign(payload: string): Promise<string> {
