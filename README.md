@@ -84,3 +84,5 @@ pedime-tablero/
 - **Total**: ~$15/año
 
 Escala a 20+ clientes sin cambiar de tier.
+<!-- redeploy -->
+
