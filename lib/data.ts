@@ -185,6 +185,41 @@ export function detectObjetivo(campaignName: string): Objetivo {
 }
 
 // ============================================================
+// Métricas derivadas por bloque de filas: CTR / CPM / clicks / impresiones
+// ponderados por gasto (aproximación cuando el sheet no trae impresiones/CPM).
+// Fórmulas:
+//   clicks       = Σ (gasto / cpc)                 (cuando cpc > 0)
+//   impresiones  = clicks / (ctr_general / 100)    (aprox si no viene el campo)
+//   CPM          = gasto / impresiones × 1000
+//   CTR agregado = clicks / impresiones × 100      (o promedio ponderado por gasto)
+// ============================================================
+export function derivedMetrics(rows: RawRow[]): {
+  clicks: number;
+  impresiones: number;
+  ctr: number;
+  cpm: number;
+  cpc: number;
+} {
+  let clicks = 0;
+  let impresiones = 0;
+  let gastoTotal = 0;
+  let ctrGastoPond = 0; // Σ (ctr × gasto)
+  for (const r of rows) {
+    gastoTotal += r.gasto;
+    ctrGastoPond += r.ctr_general * r.gasto;
+    if (r.cpc > 0) {
+      const c = r.gasto / r.cpc;
+      clicks += c;
+      if (r.ctr_general > 0) impresiones += c / (r.ctr_general / 100);
+    }
+  }
+  const ctr = gastoTotal > 0 ? ctrGastoPond / gastoTotal : 0;
+  const cpm = impresiones > 0 ? (gastoTotal / impresiones) * 1000 : 0;
+  const cpc = clicks > 0 ? gastoTotal / clicks : 0;
+  return { clicks, impresiones, ctr, cpm, cpc };
+}
+
+// ============================================================
 // Delta absoluto y porcentaje entre 2 valores.
 // ============================================================
 export function delta(current: number, previous: number) {
