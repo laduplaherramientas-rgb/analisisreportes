@@ -11,6 +11,9 @@ export type HeatmapRow = {
   label: React.ReactNode;
   cells: HeatmapCell[];
   trendPct?: number;
+  // Agrupamiento visual: filas con el mismo groupKey se muestran juntas bajo un header
+  groupKey?: string;
+  groupLabel?: React.ReactNode;
 };
 
 type Props = {
@@ -117,44 +120,68 @@ export default function Heatmap({
             </tr>
           </thead>
           <tbody>
-            {rows.map((r) => (
-              <tr key={r.key}>
-                <td className="rowname">{r.label}</td>
-                {dates.map((d) => {
-                  const c = r.cells.find((c) => c.date === d);
-                  const v = c?.value ?? 0;
-                  const isToday = d === highlightDate;
-                  const cellStyle: React.CSSProperties = {
-                    background: v > 0 ? bgFor(v) : undefined,
-                  };
-                  if (isToday) {
-                    cellStyle.outline = "2px solid var(--accent)";
-                    cellStyle.outlineOffset = "-2px";
-                  }
-                  return (
-                    <td
-                      key={d}
-                      className={v === 0 ? "cell empty" : "cell"}
-                      style={cellStyle}
-                    >
-                      {fmt(v, metric, currency)}
+            {rows.flatMap((r, i) => {
+              const prevGroup = i > 0 ? rows[i - 1].groupKey : undefined;
+              const showGroupHeader = r.groupKey && r.groupKey !== prevGroup;
+              const totalCols = dates.length + 2;
+              const out: React.ReactElement[] = [];
+              if (showGroupHeader) {
+                out.push(
+                  <tr key={`grp-${r.groupKey}-${i}`} className="heat-group-header">
+                    <td colSpan={totalCols} style={{
+                      padding: "12px 16px 8px",
+                      background: "var(--surface-2)",
+                      borderTop: i === 0 ? "none" : "2px solid var(--rule)",
+                      fontFamily: "'Iowan Old Style', Georgia, serif",
+                      fontSize: 13,
+                      color: "var(--ink)",
+                      letterSpacing: "0.02em",
+                    }}>
+                      {r.groupLabel}
                     </td>
-                  );
-                })}
-                <td className="trend-cell">
-                  {r.trendPct !== undefined && r.trendPct !== 0 && (
-                    <span
-                      className={`trend ${
-                        r.trendPct > 3 ? "up" : r.trendPct < -3 ? "down" : "flat"
-                      }`}
-                    >
-                      {r.trendPct > 0 ? "↗ +" : r.trendPct < 0 ? "↘ " : "→ "}
-                      {r.trendPct.toFixed(0)}%
-                    </span>
-                  )}
-                </td>
-              </tr>
-            ))}
+                  </tr>
+                );
+              }
+              out.push(
+                <tr key={r.key}>
+                  <td className="rowname">{r.label}</td>
+                  {dates.map((d) => {
+                    const c = r.cells.find((c) => c.date === d);
+                    const v = c?.value ?? 0;
+                    const isToday = d === highlightDate;
+                    const cellStyle: React.CSSProperties = {
+                      background: v > 0 ? bgFor(v) : undefined,
+                    };
+                    if (isToday) {
+                      cellStyle.outline = "2px solid var(--accent)";
+                      cellStyle.outlineOffset = "-2px";
+                    }
+                    return (
+                      <td
+                        key={d}
+                        className={v === 0 ? "cell empty" : "cell"}
+                        style={cellStyle}
+                      >
+                        {fmt(v, metric, currency)}
+                      </td>
+                    );
+                  })}
+                  <td className="trend-cell">
+                    {r.trendPct !== undefined && r.trendPct !== 0 && (
+                      <span
+                        className={`trend ${
+                          r.trendPct > 3 ? "up" : r.trendPct < -3 ? "down" : "flat"
+                        }`}
+                      >
+                        {r.trendPct > 0 ? "↗ +" : r.trendPct < 0 ? "↘ " : "→ "}
+                        {r.trendPct.toFixed(0)}%
+                      </span>
+                    )}
+                  </td>
+                </tr>
+              );
+              return out;
+            })}
           </tbody>
         </table>
       </div>

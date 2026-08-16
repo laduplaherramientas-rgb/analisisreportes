@@ -47,18 +47,21 @@ function trend(cells: { date: string; value: number }[]): number {
   return ((l - p) / p) * 100;
 }
 
-function buildRows(
+type RowWithMeta = HeatmapRow & {
+  _spend: number;
+  _groupSpend?: number; // gasto del grupo (para ordenar grupos completos)
+};
+
+function buildRowsFlat(
   rows: RawRow[],
   entityKey: "campaign_id" | "adset_id" | "ad_id",
-  nameKey: "campaign_name" | "adset_name" | "ad_name",
-  parentInfo?: (r: RawRow) => string
-): HeatmapRow[] {
+  nameKey: "campaign_name" | "adset_name" | "ad_name"
+): RowWithMeta[] {
   const grouped = groupBy2(rows, entityKey, "fecha");
   return Array.from(grouped.entries())
     .map(([id, byDate]) => {
       const sample = rows.find((r) => r[entityKey] === id)!;
       const name = sample[nameKey];
-      const parent = parentInfo?.(sample);
       const objetivo = detectObjetivo(sample.campaign_name);
       const badge = objetivo === "presentacion" ? "pre" : objetivo === "evaluacion" ? "eval" : "conv";
 
@@ -76,15 +79,131 @@ function buildRows(
           <>
             <span className={`badge-type ${badge}`}>{badge.toUpperCase()}</span>
             {name}
-            {parent && <small style={{ color: "var(--muted)", marginLeft: 6 }}>· {parent}</small>}
           </>
         ),
         cells,
         trendPct: trend(cells),
         _spend: totalSpend,
-      } as HeatmapRow & { _spend: number };
+      } as RowWithMeta;
     })
-    .sort((a, b) => (b as any)._spend - (a as any)._spend);
+    .sort((a, b) => b._spend - a._spend);
+}
+
+// Construye filas de CONJUNTOS agrupadas por su campaña padre.
+// Los grupos (campañas) van ordenados por gasto total del grupo, y dentro de cada
+// grupo los conjuntos también por gasto — así lo importante siempre queda arriba.
+function buildAdsetsGrouped(rows: RawRow[]): RowWithMeta[] {
+  const byCampAdset = new Map<string, { campName: string; adsets: Map<string, RawRow[]> }>();
+  for (const r of rows) {
+    if (!byCampAdset.has(r.campaign_id)) {
+      byCampAdset.set(r.campaign_id, { campName: r.campaign_name, adsets: new Map() });
+    }
+    const camp = byCampAdset.get(r.campaign_id)!;
+    if (!camp.adsets.has(r.adset_id)) camp.adsets.set(r.adset_id, []);
+    camp.adsets.get(r.adset_id)!.push(r);
+  }
+
+  // Convertimos y calculamos spend por grupo
+  const grupos = Array.from(byCampAdset.entries()).map(([campId, camp]) => {
+    const objetivo = detectObjetivo(camp.campName);
+    const badge = objetivo === "presentacion" ? "pre" : objetivo === "evaluacion" ? "eval" : "conv";
+    const adsetRows: RowWithMeta[] = Array.from(camp.adsets.entries()).map(([adsetId, ars]) => {
+      const adsetName = ars[0].adset_name;
+      const byDate = new Map<string, RawRow[]>();
+      for (const r of ars) {
+        if (!byDate.has(r.fecha)) byDate.set(r.fecha, []);
+        byDate.get(r.fecha)!.push(r);
+      }
+      const cells = Array.from(byDate.entries()).map(([date, drs]) => ({
+        date,
+        value: aggregate(drs).roas,
+      }));
+      cells.sort((a, b) => a.date.localeCompare(b.date));
+      const spend = ars.reduce((s, r) => s + r.gasto, 0);
+      return {
+        key: `${campId}::${adsetId}`,
+        label: <>📦 {adsetName}</>,
+        cells,
+        trendPct: trend(cells),
+        _spend: spend,
+        groupKey: campId,
+        groupLabel: (
+          <>
+            <span className={`badge-type ${badge}`}>{badge.toUpperCase()}</span>
+            <b>{camp.campName}</b>
+            <span style={{ marginLeft: 8, color: "var(--muted)", fontSize: 11, fontFamily: "system-ui", letterSpacing: 0 }}>
+              · {camp.adsets.size} {camp.adsets.size === 1 ? "conjunto" : "conjuntos"}
+            </span>
+          </>
+        ),
+      } as RowWithMeta;
+    }).sort((a, b) => b._spend - a._spend);
+    const groupSpend = adsetRows.reduce((s, r) => s + r._spend, 0);
+    return { campId, adsetRows, groupSpend };
+  });
+
+  grupos.sort((a, b) => b.groupSpend - a.groupSpend);
+  return grupos.flatMap((g) => g.adsetRows);
+}
+
+// Igual pero para ANUNCIOS agrupados por conjunto padre (con la campaña arriba del nombre del conjunto)
+function buildAdsGrouped(rows: RawRow[], limit = 20): RowWithMeta[] {
+  const byAdset = new Map<string, { campName: string; adsetName: string; ads: Map<string, RawRow[]> }>();
+  for (const r of rows) {
+    if (!byAdset.has(r.adset_id)) {
+      byAdset.set(r.adset_id, { campName: r.campaign_name, adsetName: r.adset_name, ads: new Map() });
+    }
+    const grp = byAdset.get(r.adset_id)!;
+    if (!grp.ads.has(r.ad_id)) grp.ads.set(r.ad_id, []);
+    grp.ads.get(r.ad_id)!.push(r);
+  }
+
+  const grupos = Array.from(byAdset.entries()).map(([adsetId, grp]) => {
+    const objetivo = detectObjetivo(grp.campName);
+    const badge = objetivo === "presentacion" ? "pre" : objetivo === "evaluacion" ? "eval" : "conv";
+    const adRows: RowWithMeta[] = Array.from(grp.ads.entries()).map(([adId, drs]) => {
+      const adName = drs[0].ad_name;
+      const byDate = new Map<string, RawRow[]>();
+      for (const r of drs) {
+        if (!byDate.has(r.fecha)) byDate.set(r.fecha, []);
+        byDate.get(r.fecha)!.push(r);
+      }
+      const cells = Array.from(byDate.entries()).map(([date, xrs]) => ({
+        date,
+        value: aggregate(xrs).roas,
+      }));
+      cells.sort((a, b) => a.date.localeCompare(b.date));
+      const spend = drs.reduce((s, r) => s + r.gasto, 0);
+      return {
+        key: `${adsetId}::${adId}`,
+        label: <>🎬 {adName}</>,
+        cells,
+        trendPct: trend(cells),
+        _spend: spend,
+        groupKey: adsetId,
+        groupLabel: (
+          <>
+            <span className={`badge-type ${badge}`}>{badge.toUpperCase()}</span>
+            <b>{grp.adsetName}</b>
+            <span style={{ marginLeft: 8, color: "var(--muted)", fontSize: 11, fontFamily: "system-ui", letterSpacing: 0 }}>
+              en {grp.campName}
+            </span>
+          </>
+        ),
+      } as RowWithMeta;
+    }).sort((a, b) => b._spend - a._spend);
+    const groupSpend = adRows.reduce((s, r) => s + r._spend, 0);
+    return { adsetId, adRows, groupSpend };
+  });
+
+  grupos.sort((a, b) => b.groupSpend - a.groupSpend);
+  // Devolvemos los top-N ads globales pero respetando el orden por grupo.
+  // Marcamos los ads que entran (top por gasto global) y luego los emitimos en orden de grupo.
+  const allAds = grupos.flatMap((g) => g.adRows);
+  const topAdKeys = new Set(
+    [...allAds].sort((a, b) => b._spend - a._spend).slice(0, limit).map((a) => a.key)
+  );
+  return grupos.flatMap((g) => g.adRows.filter((a) => topAdKeys.has(a.key)));
 }
 
 export default async function DailyPage({
@@ -117,9 +236,9 @@ export default async function DailyPage({
     );
   }
 
-  const campRows = buildRows(rows, "campaign_id", "campaign_name");
-  const adsetRows = buildRows(rows, "adset_id", "adset_name", (r) => r.campaign_name);
-  const adRows = buildRows(rows, "ad_id", "ad_name", (r) => r.adset_name).slice(0, 15);
+  const campRows = buildRowsFlat(rows, "campaign_id", "campaign_name");
+  const adsetRows = buildAdsetsGrouped(rows);
+  const adRows = buildAdsGrouped(rows, 20);
 
   return (
     <>
@@ -137,9 +256,9 @@ export default async function DailyPage({
         highlightDate={today}
       />
 
-      <div className="section-label">Nivel 2 · Por Conjunto</div>
+      <div className="section-label">Nivel 2 · Por Conjunto (agrupado por campaña)</div>
       <Heatmap
-        title="ROAS por conjunto · día por día"
+        title="ROAS por conjunto · agrupado por campaña padre"
         dates={dates}
         rows={adsetRows}
         metric="roas"
@@ -149,9 +268,9 @@ export default async function DailyPage({
         highlightDate={today}
       />
 
-      <div className="section-label">Nivel 3 · Por Anuncio</div>
+      <div className="section-label">Nivel 3 · Por Anuncio (agrupado por conjunto)</div>
       <Heatmap
-        title={`ROAS por anuncio · top ${adRows.length} por gasto`}
+        title={`ROAS por anuncio · top ${adRows.length} por gasto · agrupados por conjunto padre`}
         dates={dates}
         rows={adRows}
         metric="roas"
