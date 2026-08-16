@@ -589,6 +589,257 @@ export default async function DashboardPage({
         </>
       )}
 
+      {/* ═════ SIMULADOR · ¿Y SI GASTÁRAMOS MÁS? ═════ */}
+      <div className="section-label">Simulador · ¿Y si gastáramos más?</div>
+      <div className="panel" style={{ padding: 24 }}>
+        <div className="panel-head" style={{ marginBottom: 16 }}>
+          <h3>Proyección de cierre bajo distintos niveles de inversión</h3>
+          <span className="hint">
+            saturación k={saturationK.toFixed(2)} · basada en variabilidad de ROAS ({cvRoas.toFixed(0)}%)
+          </span>
+        </div>
+
+        <div className="table-wrap">
+          <table>
+            <thead>
+              <tr>
+                <th>Escenario</th>
+                <th>Gasto proyectado</th>
+                <th>ROAS efectivo</th>
+                <th>Ventas proyectadas</th>
+                <th>Compras</th>
+                <th>Δ Ventas vs base</th>
+              </tr>
+            </thead>
+            <tbody>
+              {escenarios.map((e) => {
+                const isBase = e.pct === 0;
+                const eficienciaMarginal = e.gastoExtra > 0 ? e.ventasExtra / e.gastoExtra : 0;
+                return (
+                  <tr key={e.pct} className={isBase ? "total" : ""}>
+                    <td>
+                      <b>{isBase ? "Base (ritmo actual)" : `+${e.pct}%`}</b>
+                      {!isBase && (
+                        <div style={{ fontSize: 11, color: "var(--muted)", marginTop: 2 }}>
+                          ROAS marginal ~{fmtRoas(eficienciaMarginal)}
+                        </div>
+                      )}
+                    </td>
+                    <td>{fmtMoney(e.gastoProy, currency)}</td>
+                    <td className={isBase ? "strong" : ""}>{fmtRoas(e.roasEfectivo)}</td>
+                    <td>{fmtMoney(e.ventasProy, currency)}</td>
+                    <td>{fmtNum(e.comprasProy)}</td>
+                    <td>
+                      {isBase ? "—" : (
+                        <span className={`delta ${e.ventasExtra > 0 ? "up" : "down"}`}>
+                          {e.ventasExtra > 0 ? "↑ +" : "↓ "}
+                          {fmtMoney(Math.abs(e.ventasExtra), currency)}
+                        </span>
+                      )}
+                    </td>
+                  </tr>
+                );
+              })}
+            </tbody>
+          </table>
+        </div>
+
+        {/* Barra visual de ventas por escenario */}
+        <div style={{ marginTop: 24 }}>
+          <div style={{ fontSize: 11, letterSpacing: "0.14em", textTransform: "uppercase", color: "var(--muted)", fontWeight: 600, marginBottom: 12 }}>
+            Ventas proyectadas por escenario
+          </div>
+          {(() => {
+            const maxV = Math.max(...escenarios.map((e) => e.ventasProy));
+            return escenarios.map((e) => {
+              const pct = maxV > 0 ? (e.ventasProy / maxV) * 100 : 0;
+              const isBase = e.pct === 0;
+              return (
+                <div key={e.pct} style={{ display: "grid", gridTemplateColumns: "120px 1fr 140px", gap: 12, alignItems: "center", marginBottom: 8 }}>
+                  <div style={{ fontSize: 12, color: isBase ? "var(--ink)" : "var(--ink-2)", fontWeight: isBase ? 600 : 400 }}>
+                    {isBase ? "Base" : `+${e.pct}% gasto`}
+                  </div>
+                  <div style={{ position: "relative", height: 22, background: "var(--surface-2)", borderRadius: 3 }}>
+                    <span style={{
+                      display: "block",
+                      width: `${pct}%`,
+                      height: "100%",
+                      background: isBase ? "var(--accent)" : "var(--good)",
+                      borderRadius: 3,
+                      opacity: isBase ? 1 : 0.85,
+                    }} />
+                  </div>
+                  <div style={{ fontSize: 12, fontVariantNumeric: "tabular-nums", textAlign: "right", color: "var(--ink-2)" }}>
+                    {fmtMoney(e.ventasProy, currency)}
+                  </div>
+                </div>
+              );
+            });
+          })()}
+        </div>
+
+        <div style={{ marginTop: 20, paddingTop: 16, borderTop: "1px dashed var(--rule)", fontSize: 12, color: "var(--muted)", fontStyle: "italic" }}>
+          Modelo: ROAS efectivo = ROAS actual × (1 − k · ln(multiplicador)), con k derivado de la volatilidad histórica del ROAS. A mayor varianza, saturación más rápida.
+        </div>
+      </div>
+
+      {/* ═════ CONSISTENCIA · DESVIACIÓN ESTÁNDAR ═════ */}
+      <div className="section-label">Consistencia del rendimiento</div>
+      <div className="panel" style={{ padding: 24 }}>
+        <div className="panel-head" style={{ marginBottom: 16 }}>
+          <h3>¿Qué tan predecible es el rendimiento diario?</h3>
+          <span className="hint">σ = desviación estándar · CV = coef. de variación (σ/μ)</span>
+        </div>
+
+        {dailyAggs.length < 3 ? (
+          <div style={{ padding: 24, textAlign: "center", color: "var(--muted)", fontStyle: "italic" }}>
+            Se necesitan al menos 3 días con datos para calcular variabilidad.
+            Tenés <b>{dailyAggs.length}</b>.
+          </div>
+        ) : (
+          <div style={{ display: "grid", gridTemplateColumns: "repeat(3, 1fr)", gap: 24 }}>
+            {[
+              { label: "Gasto diario", mean: meanGasto, std: stdGasto, cv: cvGasto, fmt: (v: number) => fmtMoney(v, currency) },
+              { label: "Ventas diarias", mean: meanVentas, std: stdVentas, cv: cvVentas, fmt: (v: number) => fmtMoney(v, currency) },
+              { label: "ROAS diario", mean: meanRoas, std: stdRoas, cv: cvRoas, fmt: (v: number) => fmtRoas(v) },
+            ].map((m) => {
+              const cvStatus = m.cv < 25 ? "good" : m.cv < 50 ? "warn" : "bad";
+              const cvLabel = m.cv < 25 ? "estable" : m.cv < 50 ? "moderada" : "volátil";
+              return (
+                <div key={m.label}>
+                  <div style={{ fontSize: 11, letterSpacing: "0.14em", textTransform: "uppercase", color: "var(--muted)", fontWeight: 600, marginBottom: 6 }}>
+                    {m.label}
+                  </div>
+                  <div style={{ fontFamily: "'Iowan Old Style', Georgia, serif", fontSize: 22, fontVariantNumeric: "tabular-nums", color: "var(--ink)" }}>
+                    {m.fmt(m.mean)}
+                    <span style={{ fontSize: 13, color: "var(--muted)", marginLeft: 6 }}>promedio</span>
+                  </div>
+                  <div style={{ fontSize: 12, color: "var(--muted)", marginTop: 4 }}>
+                    σ = <b style={{ color: "var(--ink-2)" }}>{m.fmt(m.std)}</b>
+                    {" · "}
+                    CV <span className={`pill ${cvStatus}`} style={{ marginLeft: 4 }}>
+                      <span className="dot"></span>{m.cv.toFixed(0)}% {cvLabel}
+                    </span>
+                  </div>
+                  {/* Barra visual μ ± σ */}
+                  <div style={{ marginTop: 12, position: "relative", height: 8, background: "var(--surface-2)", borderRadius: 2 }}>
+                    <span style={{
+                      position: "absolute",
+                      left: `${Math.max(0, 50 - Math.min(50, (m.cv / 2)))}%`,
+                      width: `${Math.min(100, m.cv)}%`,
+                      height: "100%",
+                      background: cvStatus === "good" ? "var(--good)" : cvStatus === "warn" ? "var(--warn)" : "var(--bad)",
+                      borderRadius: 2,
+                      opacity: 0.5,
+                    }} />
+                    <span style={{
+                      position: "absolute",
+                      left: "50%",
+                      top: -2,
+                      bottom: -2,
+                      width: 2,
+                      background: "var(--ink)",
+                    }} />
+                  </div>
+                  <div style={{ display: "flex", justifyContent: "space-between", fontSize: 10, color: "var(--muted)", marginTop: 4 }}>
+                    <span>μ − σ</span>
+                    <span>μ</span>
+                    <span>μ + σ</span>
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+        )}
+
+        <div style={{ marginTop: 20, paddingTop: 16, borderTop: "1px dashed var(--rule)", fontSize: 12, color: "var(--muted)" }}>
+          <b>Cómo leerlo:</b> CV &lt; 25% → performance predecible, base sólida para escalar. CV 25–50% → variable, revisar antes de subir presupuesto. CV &gt; 50% → volátil, priorizar estabilizar antes que crecer.
+        </div>
+      </div>
+
+      {/* ═════ CREATIVOS ACTIVOS vs ROAS ═════ */}
+      <div className="section-label">Presupuesto y creativos · efecto sobre ROAS</div>
+      <div className="panel" style={{ padding: 24 }}>
+        <div className="panel-head" style={{ marginBottom: 16 }}>
+          <h3>¿Más anuncios activos = mejor o peor ROAS?</h3>
+          <span className="hint">
+            Correlación gasto↔ROAS: <b style={{ color: corrGastoRoas < -0.3 ? "var(--bad)" : corrGastoRoas > 0.3 ? "var(--good)" : "var(--muted)" }}>{corrGastoRoas.toFixed(2)}</b>
+            {" · "}
+            Correlación #anuncios↔ROAS: <b style={{ color: corrAdsRoas < -0.3 ? "var(--bad)" : corrAdsRoas > 0.3 ? "var(--good)" : "var(--muted)" }}>{corrAdsRoas.toFixed(2)}</b>
+          </span>
+        </div>
+
+        {adsVsRoas.length < 3 ? (
+          <div style={{ padding: 24, textAlign: "center", color: "var(--muted)", fontStyle: "italic" }}>
+            Se necesitan al menos 3 días con datos.
+          </div>
+        ) : (() => {
+          const maxAds = Math.max(...adsVsRoas.map((d) => d.ads), 1);
+          const maxRoas = Math.max(...adsVsRoas.map((d) => d.roas), client.roas_objetivo, 1);
+          const W = 640, H = 220, P = 32;
+          return (
+            <div style={{ overflowX: "auto" }}>
+              <svg viewBox={`0 0 ${W} ${H}`} style={{ width: "100%", maxWidth: W, height: "auto" }}>
+                {/* Grid horizontal */}
+                {[0.25, 0.5, 0.75, 1].map((f) => (
+                  <line
+                    key={f}
+                    x1={P} x2={W - P}
+                    y1={H - P - f * (H - 2 * P)}
+                    y2={H - P - f * (H - 2 * P)}
+                    stroke="var(--rule)"
+                    strokeDasharray="2 3"
+                  />
+                ))}
+                {/* Línea objetivo ROAS */}
+                {maxRoas > 0 && (
+                  <line
+                    x1={P} x2={W - P}
+                    y1={H - P - (client.roas_objetivo / maxRoas) * (H - 2 * P)}
+                    y2={H - P - (client.roas_objetivo / maxRoas) * (H - 2 * P)}
+                    stroke="var(--good)"
+                    strokeWidth="1.5"
+                    strokeDasharray="4 4"
+                  />
+                )}
+                {/* Puntos */}
+                {adsVsRoas.map((d, i) => {
+                  const x = P + (d.ads / maxAds) * (W - 2 * P);
+                  const y = H - P - (d.roas / maxRoas) * (H - 2 * P);
+                  const r = 4 + Math.sqrt(d.gasto / (meanGasto || 1)) * 3;
+                  const color = d.roas >= client.roas_objetivo ? "var(--good)" : d.roas >= client.roas_objetivo * 0.7 ? "var(--warn)" : "var(--bad)";
+                  return (
+                    <g key={i}>
+                      <circle cx={x} cy={y} r={r} fill={color} opacity={0.7} />
+                      <title>{d.fecha} · {d.ads} ads · ROAS {d.roas.toFixed(2)} · Gasto {fmtMoney(d.gasto, currency)}</title>
+                    </g>
+                  );
+                })}
+                {/* Ejes */}
+                <line x1={P} x2={W - P} y1={H - P} y2={H - P} stroke="var(--ink-2)" strokeWidth="1" />
+                <line x1={P} x2={P} y1={P} y2={H - P} stroke="var(--ink-2)" strokeWidth="1" />
+                {/* Labels */}
+                <text x={W / 2} y={H - 6} textAnchor="middle" fontSize="10" fill="var(--muted)">
+                  # anuncios activos por día (0 → {maxAds})
+                </text>
+                <text x={10} y={P} fontSize="10" fill="var(--muted)">
+                  ROAS {maxRoas.toFixed(1)}x
+                </text>
+                <text x={10} y={H - P + 3} fontSize="10" fill="var(--muted)">0</text>
+              </svg>
+            </div>
+          );
+        })()}
+
+        <div style={{ marginTop: 20, paddingTop: 16, borderTop: "1px dashed var(--rule)", fontSize: 12, color: "var(--muted)" }}>
+          <b>Cómo leerlo:</b> cada círculo es un día · tamaño = gasto de ese día · verde/amarillo/rojo según ROAS.
+          {" "}
+          {corrAdsRoas < -0.3 && <span style={{ color: "var(--bad)" }}>Correlación negativa fuerte: sumar más creativos está diluyendo la eficiencia. Considerá pausar los de bajo rendimiento antes de agregar más.</span>}
+          {corrAdsRoas > 0.3 && <span style={{ color: "var(--good)" }}>Correlación positiva: más creativos activos coinciden con mejor ROAS. Hay margen para seguir sumando variantes.</span>}
+          {corrAdsRoas >= -0.3 && corrAdsRoas <= 0.3 && <span>No hay señal clara todavía · seguí acumulando data.</span>}
+        </div>
+      </div>
+
       <div className="footstrip">
         <span>Datos por <b>{client.nombre}</b> · Sheet <code style={{ fontSize: 11 }}>{client.sheet_id.substring(0, 12)}…</code></span>
         <span>Período comparado: <b>{period.previous?.label ?? "—"}</b></span>
