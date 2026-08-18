@@ -6,6 +6,7 @@ const TABS = [
   { href: "/dashboard", label: "Tablero", key: "dashboard" },
   { href: "/dashboard/desglose", label: "Desglose", key: "desglose" },
   { href: "/dashboard/daily", label: "Rendimiento diario", key: "daily" },
+  { href: "/dashboard/funnel", label: "% Conversión", key: "funnel" },
   { href: "/dashboard/seasonality", label: "Estacionalidad", key: "seasonality" },
   { href: "/dashboard/log", label: "Bitácora", key: "log" },
   { href: "/dashboard/settings", label: "Ajustes", key: "settings" },
